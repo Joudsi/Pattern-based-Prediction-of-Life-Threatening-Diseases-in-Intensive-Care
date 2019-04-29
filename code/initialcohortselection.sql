@@ -235,3 +235,5 @@ Inner join diagnoses_icd dicd
 on ap.subject_id = dicd.subject_id					  
 where icd9_code like '%5849%';
 					  
+select count(*) from admissions_prescriptions_distinct_withexclusions_bb_aki
+where exclusion_bb_drug = 1 AND exclusion_aki = 0;
