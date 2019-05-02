@@ -1,8 +1,11 @@
 SET search_path TO mimiciii;
-
+DROP MATERIALIZED VIEW if exists final_data;
+DROP MATERIALIZED VIEW if exists labs;
+DROP MATERIALIZED VIEW if exists labs_raw;
 DROP MATERIALIZED VIEW if exists vitals;
 DROP MATERIALIZED VIEW if exists vitals_raw;
 DROP MATERIALIZED VIEW if exists small_chartevents;
+DROP MATERIALIZED VIEW if exists static_data;
 DROP MATERIALIZED VIEW if exists static_data;
 
 CREATE MATERIALIZED VIEW static_data
@@ -68,6 +71,7 @@ AS
 );
 
 --select * from vitals_raw;
+						   
 DROP extension tablefunc;					   
 CREATE extension tablefunc;						   
 						   
@@ -88,5 +92,92 @@ AS
 );
 
 -- select * from vitals;
+CREATE MATERIALIZED VIEW small_labevents	
+AS						   
+(select icustay_id,
+		itemid,
+        charttime,
+        valuenum
+ from labevents l
+ inner join icustays icu on icu.subject_id = l.subject_id
+ --inner join icustays icu on icu.hadm_id = l.hadm_id 
+ where itemid in (50912,50833,50971,50983,50902,50806,50882,51221,51480,51301,50809,50931,50960,50808,50893,50970,50813)
+ and icustay_id in (select icustay_id from static_data) 
+ and valuenum is not null)
+
+--select * from small_labevents;
+CREATE MATERIALIZED VIEW labs_raw	
+AS
+(select distinct icustay_id,
+ 
+ 		case
+         when itemid in (50912) then 'cr'
+		when itemid in (50833, 50971) then 'k'
+		when itemid in (50983) then 'na'
+		when itemid in (50902,50806) then 'cl'
+		when itemid in (50882) then 'bicarb'
+		when itemid in (51221,51480) then 'hct'
+		when itemid in (51301) then 'wbc'
+		when itemid in (50809,50931) then 'glucose'
+		when itemid in (50960) then 'mg'
+		when itemid in (50808,50893) then 'ca'
+		when itemid in (50970) then 'p'
+		when itemid in (50813) then 'lactate'
+        end as type,         
+        first_value(valuenum) over (partition by icustay_id, itemid order by charttime) as first_value
+ from small_labevents 
+)
+-- select * from labs_raw;	
+
 						   
+CREATE MATERIALIZED VIEW labs	
+AS
+(
+	   SELECT * 
+	FROM crosstab('select icustay_id, type, SUM (ROUND(first_value::numeric, 1)) from labs_raw group by 1,2') 
+		 AS final_result(
+		icustay_id integer,
+        cr NUMERIC,
+		k NUMERIC, 
+		na NUMERIC,
+		cl NUMERIC,
+		bicarb NUMERIC,
+		hct NUMERIC,
+		wbc NUMERIC,
+		glucose NUMERIC,
+		mg NUMERIC,
+		ca NUMERIC,
+		p NUMERIC,
+		lactate NUMERIC
+		 )
+)
+--select * from labs;	
 						   
+
+						   
+CREATE MATERIALIZED VIEW final_data
+AS (select s.*,
+        v.hr,
+        v.map,
+        v.sbp,
+        v.temp,
+        v.spo2,       
+        v.rr,       
+        l.cr, 
+        l.k,
+        l.na,
+        l.cl,
+        l.bicarb,
+        l.hct,
+        l.wbc,
+        l.glucose,
+        l.mg,
+        l.ca,
+        l.p,
+        l.lactate
+ from static_data s
+ left join vitals v on s.icustay_id=v.icustay_id 
+ left join labs l on s.icustay_id=l.icustay_id 
+);
+select * from final_data order by 1,2,3
+							   
